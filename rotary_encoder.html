@@ -35,6 +35,11 @@
     margin-top: 1em;
     padding-top: 1em;
     border-top: thin dotted }
+
+    img {
+      max-width: 100%;
+      height: auto;
+    }
   </style>
 </head>
 
@@ -53,12 +58,8 @@
 <p>A system for measuring the instantanious rotor angular position for electric motor testing.
 
 <p>Video Rotary Encoder
-Real-time angular shaft position of the DUT is measured using a low-cost USB video camera mounted on a tripod and a target disk mounted on the motor shaft. Software measures the angle of the boundary between the dark and light areas of the target disk and provides this data directly to the test software. Total hardware cost is less than $75. The camera interfaces directly to any PC. Accuracy is very high at the normal rotation speeds used for single-phase rotation testing.
+Real-time angular shaft position of the DUT is measured using a low-cost USB video camera mounted on a tripod and a target disk mounted on the motor shaft. Software measures the angle of the boundary between the dark and light areas of the target disk and provides this data directly to the test software. Total hardware cost is less than $75. The camera interfaces directly to any PC. Accuracy is very high at the normal rotation speeds used for single-phase rotation testing.</p>
 
-img {
-  max-width: 100%;
-  height: auto;
-}
 <img src="rotaryEncoder/RotaryEncoder1.jpg" alt="Motor Test Setup">
 
 <p>There are two versions of this project. The original was written in Java. The latest version is written in Python3 for easier initial setup and maintenance. The final functionality will be the same.
