@@ -36,19 +36,22 @@
     padding-top: 1em;
     border-top: thin dotted }
 
-    /* Three image containers (use 25% for four, and 50% for two, etc) */
-    .column {
-      float: left;
-      width: 50%;
-      padding: 5px;
-    }
+* {
+  box-sizing: border-box;
+}
 
-    /* Clear floats after image containers */
-    .row::after {
-      content: "";
-      clear: both;
-      display: table;
-    } 
+.column {
+  float: left;
+  width: 50.0%;
+  padding: 5px;
+}
+
+/* Clearfix (clear floats) */
+.row::after {
+  content: "";
+  clear: both;
+  display: table;
+}
   </style>
 </head>
 
