@@ -1,0 +1,73 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html>
+<head>
+  <title>SonarPhone to SeaTalk Interface</title>
+  <style type="text/css">
+  body {
+    padding-left: 11em;
+    font-family: Georgia, "Times New Roman",
+          Times, serif;
+    color: #000080;
+    background-color: #AEB7BC }
+  ul.navbar {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    position: absolute;
+    top: 2em;
+    left: 1em;
+    width: 9em }
+  h1 {
+    font-family: Helvetica, Geneva, Arial,
+          SunSans-Regular, sans-serif }
+  ul.navbar li {
+    background: white;
+    margin: 0.5em 0;
+    padding: 0.3em;
+    border-right: 1em solid gold }
+  ul.navbar a {
+    text-decoration: none }
+  a:link {
+    color: blue }
+  a:visited {
+    color: purple }
+  address {
+    margin-top: 1em;
+    padding-top: 1em;
+    border-top: thin dotted }
+
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+  </style>
+</head>
+
+<body>
+
+<!-- Site navigation menu -->
+<ul class="navbar">
+  <li><a href="https://github.com/jim-mckeown/SP200A-Client">SonarPhone - SeaTalk Interface</a>
+  <li><a href="https://github.com/jim-mckeown/SP200A-Client/SP200AProtocol_20221223.pdf">SonarPhone Protocol</a>
+  <li><a href="https://jim-mckeown.github.io/index.html">Back to Projects Page</a>
+</ul>
+
+<!-- Main content -->
+<h1>SonarPhone - SeaTalk Interface</h1>
+
+<img src="C70BenchTest.jpg" alt="C70 Bench Test">
+
+<p>This project reads numerical depth from SonarPhone WiFi and sends SeaTalk data to a chart plotter.
+
+<p>This is a stand-alone ESP32 microcontroller with wifi interface to acquire depth data from a SonarPhone SP200A as a single or second master, not as a slave. The SonarPhone app can also run as a master at the same time but is not required. Settings follow the phone app master's last settings. This project does not interfere with any of the original SonarPhone app functionality. Depth is transmitted on SeaTalk to a Raymarine C70 or other compatable chart plotter. Units are properly displayed according to the chart plotter settings independantly of the SonarPhone master settings.
+
+<p>Any comments, additions, or corrections are welcome.
+
+
+
+<!-- Sign and date the page, it's only polite! -->
+<address>06 May 2023<br>
+  - Jim McKeown</address>
+
+</body>
+</html>
