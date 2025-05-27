@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+        #radar-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: black;
+        }
+        #radar-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        #marker {
+            position: absolute;
+            pointer-events: none;
+            display: none;
+            /* Initial size (will be scaled dynamically) */
+            width: 64px;
+            height: 64px;
+            transform: translate(-31px, -63px);
+        }
+        #status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Loading radar...</div>
+    <div id="radar-container">
+        <img id="radar-image" src="https://weather.bangkok.go.th/Images/Radar/nkradarh.jpg" alt="Radar">
+        <img id="marker" src="icon.png">
+    </div>
+
+    <script>
+        // Radar station data
+        const radar = {
+            lat: 13.737716,
+            lon: 100.358873,
+            imgX: 959,
+            imgY: 799,
+            scale: 740.741,
+            originalWidth: 1920,
+            originalHeight: 1600
+        };
+
+        // Marker data (original size and tip offset)
+        const marker = {
+            originalWidth: 64,
+            originalHeight: 64,
+            tipOffsetX: 31,  // Marker's tip is 31px from left
+            tipOffsetY: 63   // Marker's tip is 63px from top
+        };
+
+        let currentPosition = null;
+
+        // ===== 1. Initialize and load radar =====
+        document.addEventListener('DOMContentLoaded', () => {
+            const radarImg = document.getElementById('radar-image');
+            const statusEl = document.getElementById('status');
+
+            radarImg.onload = () => {
+                statusEl.textContent = "Requesting GPS...";
+                requestGeolocation();
+            };
+
+            radarImg.onerror = () => {
+                statusEl.textContent = "Failed to load radar image!";
+            };
+        });
+
+        // ===== 2. Request GPS location =====
+        function requestGeolocation() {
+            const statusEl = document.getElementById('status');
+
+            if (!navigator.geolocation) {
+                statusEl.textContent = "Geolocation not supported!";
+                fallbackToManual();
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    statusEl.textContent = "GPS acquired!";
+                    currentPosition = position.coords;
+                    updateMarkerPosition();
+                },
+                (error) => {
+                    console.error("Geolocation error:", error);
+                    statusEl.textContent = "GPS failed: " + error.message;
+                    fallbackToManual();
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        // ===== 3. Update marker position and size =====
+        function updateMarkerPosition() {
+            if (!currentPosition) return;
+
+            const radarImg = document.getElementById('radar-image');
+            const markerEl = document.getElementById('marker');
+            const container = document.getElementById('radar-container');
+
+            // Calculate scaling factors
+            const scaleX = radarImg.clientWidth / radar.originalWidth;
+            const scaleY = radarImg.clientHeight / radar.originalHeight;
+            const avgScale = (scaleX + scaleY) / 2;  // Use average for uniform scaling
+
+            // Scale marker size
+            markerEl.style.width = `${marker.originalWidth * avgScale}px`;
+            markerEl.style.height = `${marker.originalHeight * avgScale}px`;
+
+            // Scale marker tip offset (for transform: translate)
+            const scaledOffsetX = marker.tipOffsetX * avgScale;
+            const scaledOffsetY = marker.tipOffsetY * avgScale;
+            markerEl.style.transform = `translate(-${scaledOffsetX}px, -${scaledOffsetY}px)`;
+
+            // Calculate position in original image coordinates
+            const dLat = currentPosition.latitude - radar.lat;
+            const dLon = currentPosition.longitude - radar.lon;
+            const xOriginal = radar.imgX + (dLon * radar.scale * Math.cos(radar.lat * Math.PI / 180));
+            const yOriginal = radar.imgY - (dLat * radar.scale);
+
+            // Scale to displayed image size
+            const imgRect = radarImg.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            const x = (xOriginal * scaleX) + (imgRect.left - containerRect.left);
+            const y = (yOriginal * scaleY) + (imgRect.top - containerRect.top);
+
+            // Position the marker
+            markerEl.style.left = `${x}px`;
+            markerEl.style.top = `${y}px`;
+            markerEl.style.display = "block";
+        }
+
+        // ===== 4. Fallback to manual input =====
+        function fallbackToManual() {
+            const lat = parseFloat(prompt("GPS failed. Enter latitude (e.g., 13.85):"));
+            const lon = parseFloat(prompt("Enter longitude (e.g., 100.85):"));
+
+            if (!isNaN(lat) && !isNaN(lon)) {
+                currentPosition = { latitude: lat, longitude: lon };
+                updateMarkerPosition();
+            } else {
+                alert("Using default Bangkok location.");
+                currentPosition = { latitude: 13.85, longitude: 100.85 };
+                updateMarkerPosition();
+            }
+        }
+
+        // ===== 5. Handle window resize =====
+        window.addEventListener('resize', () => {
+            if (currentPosition) updateMarkerPosition();
+        });
+    </script>
+</body>
+</html>
