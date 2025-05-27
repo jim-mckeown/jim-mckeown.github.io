@@ -20,11 +20,12 @@
         }
         #marker {
             position: absolute;
+            pointer-events: none;
+            display: none;
+            /* Initial size (will be scaled dynamically) */
             width: 64px;
             height: 64px;
             transform: translate(-31px, -63px);
-            pointer-events: none;
-            display: none;
         }
         #status {
             position: fixed;
@@ -58,9 +59,17 @@
             originalHeight: 1600
         };
 
+        // Marker data (original size and tip offset)
+        const marker = {
+            originalWidth: 64,
+            originalHeight: 64,
+            tipOffsetX: 31,  // Marker's tip is 31px from left
+            tipOffsetY: 63   // Marker's tip is 63px from top
+        };
+
         let currentPosition = null;
 
-        // ===== 1. INITIALIZE =====
+        // ===== 1. Initialize and load radar =====
         document.addEventListener('DOMContentLoaded', () => {
             const radarImg = document.getElementById('radar-image');
             const statusEl = document.getElementById('status');
@@ -75,7 +84,7 @@
             };
         });
 
-        // ===== 2. GEOLOCATION WITH EXPLICIT PERMISSION HANDLING =====
+        // ===== 2. Request GPS location =====
         function requestGeolocation() {
             const statusEl = document.getElementById('status');
 
@@ -85,14 +94,6 @@
                 return;
             }
 
-            // High-accuracy mode (GPS only)
-            const options = {
-                enableHighAccuracy: true,
-                timeout: 10000,
-                maximumAge: 0
-            };
-
-            // Request permission
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     statusEl.textContent = "GPS acquired!";
@@ -101,73 +102,69 @@
                 },
                 (error) => {
                     console.error("Geolocation error:", error);
-                    switch (error.code) {
-                        case error.PERMISSION_DENIED:
-                            statusEl.textContent = "Permission denied. Allow location access.";
-                            break;
-                        case error.POSITION_UNAVAILABLE:
-                            statusEl.textContent = "GPS signal lost (try outdoors).";
-                            break;
-                        case error.TIMEOUT:
-                            statusEl.textContent = "GPS timeout (enable high accuracy).";
-                            break;
-                        default:
-                            statusEl.textContent = "GPS error: " + error.message;
-                    }
+                    statusEl.textContent = "GPS failed: " + error.message;
                     fallbackToManual();
                 },
-                options
+                { enableHighAccuracy: true, timeout: 10000 }
             );
         }
 
-        // ===== 3. UPDATE MARKER POSITION =====
+        // ===== 3. Update marker position and size =====
         function updateMarkerPosition() {
             if (!currentPosition) return;
 
             const radarImg = document.getElementById('radar-image');
-            const marker = document.getElementById('marker');
+            const markerEl = document.getElementById('marker');
             const container = document.getElementById('radar-container');
 
-            // Calculate scaling
+            // Calculate scaling factors
             const scaleX = radarImg.clientWidth / radar.originalWidth;
             const scaleY = radarImg.clientHeight / radar.originalHeight;
+            const avgScale = (scaleX + scaleY) / 2;  // Use average for uniform scaling
 
-            // Original coordinates
+            // Scale marker size
+            markerEl.style.width = `${marker.originalWidth * avgScale}px`;
+            markerEl.style.height = `${marker.originalHeight * avgScale}px`;
+
+            // Scale marker tip offset (for transform: translate)
+            const scaledOffsetX = marker.tipOffsetX * avgScale;
+            const scaledOffsetY = marker.tipOffsetY * avgScale;
+            markerEl.style.transform = `translate(-${scaledOffsetX}px, -${scaledOffsetY}px)`;
+
+            // Calculate position in original image coordinates
             const dLat = currentPosition.latitude - radar.lat;
             const dLon = currentPosition.longitude - radar.lon;
             const xOriginal = radar.imgX + (dLon * radar.scale * Math.cos(radar.lat * Math.PI / 180));
             const yOriginal = radar.imgY - (dLat * radar.scale);
 
-            // Scaled coordinates
+            // Scale to displayed image size
             const imgRect = radarImg.getBoundingClientRect();
             const containerRect = container.getBoundingClientRect();
             const x = (xOriginal * scaleX) + (imgRect.left - containerRect.left);
             const y = (yOriginal * scaleY) + (imgRect.top - containerRect.top);
 
-            marker.style.left = `${x}px`;
-            marker.style.top = `${y}px`;
-            marker.style.display = "block";
+            // Position the marker
+            markerEl.style.left = `${x}px`;
+            markerEl.style.top = `${y}px`;
+            markerEl.style.display = "block";
         }
 
-        // ===== 4. FALLBACK TO MANUAL INPUT =====
+        // ===== 4. Fallback to manual input =====
         function fallbackToManual() {
-            const statusEl = document.getElementById('status');
-            statusEl.textContent = "GPS failed. Enter coordinates manually.";
-
-            const lat = parseFloat(prompt("Enter latitude (e.g., 13.85):"));
+            const lat = parseFloat(prompt("GPS failed. Enter latitude (e.g., 13.85):"));
             const lon = parseFloat(prompt("Enter longitude (e.g., 100.85):"));
 
             if (!isNaN(lat) && !isNaN(lon)) {
                 currentPosition = { latitude: lat, longitude: lon };
                 updateMarkerPosition();
             } else {
-                statusEl.textContent = "Using default Bangkok location.";
+                alert("Using default Bangkok location.");
                 currentPosition = { latitude: 13.85, longitude: 100.85 };
                 updateMarkerPosition();
             }
         }
 
-        // Handle window resize
+        // ===== 5. Handle window resize =====
         window.addEventListener('resize', () => {
             if (currentPosition) updateMarkerPosition();
         });
