@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+        #radar-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: black;
+        }
+        #radar-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        #marker {
+            position: absolute;
+            width: 64px;
+            height: 64px;
+            transform: translate(-31px, -63px);
+            pointer-events: none;
+            display: none;
+        }
+        #status {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Loading radar...</div>
+    <div id="radar-container">
+        <img id="radar-image" src="https://weather.bangkok.go.th/Images/Radar/radarh.jpg" alt="Radar">
+        <img id="marker" src="icon.png">
+    </div>
+
+    <script>
+        // Radar station data
+        const radar = {
+            lat: 13.834804,
+            lon: 100.846332,
+            imgX: 959,
+            imgY: 799,
+            scale: 740.741,
+            originalWidth: 1920,
+            originalHeight: 1600
+        };
+
+        let currentPosition = null;
+
+        // ===== 1. INITIALIZE =====
+        document.addEventListener('DOMContentLoaded', () => {
+            const radarImg = document.getElementById('radar-image');
+            const statusEl = document.getElementById('status');
+
+            radarImg.onload = () => {
+                statusEl.textContent = "Requesting GPS...";
+                requestGeolocation();
+            };
+
+            radarImg.onerror = () => {
+                statusEl.textContent = "Failed to load radar image!";
+            };
+        });
+
+        // ===== 2. GEOLOCATION WITH EXPLICIT PERMISSION HANDLING =====
+        function requestGeolocation() {
+            const statusEl = document.getElementById('status');
+
+            if (!navigator.geolocation) {
+                statusEl.textContent = "Geolocation not supported!";
+                fallbackToManual();
+                return;
+            }
+
+            // High-accuracy mode (GPS only)
+            const options = {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            };
+
+            // Request permission
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    statusEl.textContent = "GPS acquired!";
+                    currentPosition = position.coords;
+                    updateMarkerPosition();
+                },
+                (error) => {
+                    console.error("Geolocation error:", error);
+                    switch (error.code) {
+                        case error.PERMISSION_DENIED:
+                            statusEl.textContent = "Permission denied. Allow location access.";
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            statusEl.textContent = "GPS signal lost (try outdoors).";
+                            break;
+                        case error.TIMEOUT:
+                            statusEl.textContent = "GPS timeout (enable high accuracy).";
+                            break;
+                        default:
+                            statusEl.textContent = "GPS error: " + error.message;
+                    }
+                    fallbackToManual();
+                },
+                options
+            );
+        }
+
+        // ===== 3. UPDATE MARKER POSITION =====
+        function updateMarkerPosition() {
+            if (!currentPosition) return;
+
+            const radarImg = document.getElementById('radar-image');
+            const marker = document.getElementById('marker');
+            const container = document.getElementById('radar-container');
+
+            // Calculate scaling
+            const scaleX = radarImg.clientWidth / radar.originalWidth;
+            const scaleY = radarImg.clientHeight / radar.originalHeight;
+
+            // Original coordinates
+            const dLat = currentPosition.latitude - radar.lat;
+            const dLon = currentPosition.longitude - radar.lon;
+            const xOriginal = radar.imgX + (dLon * radar.scale * Math.cos(radar.lat * Math.PI / 180));
+            const yOriginal = radar.imgY - (dLat * radar.scale);
+
+            // Scaled coordinates
+            const imgRect = radarImg.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            const x = (xOriginal * scaleX) + (imgRect.left - containerRect.left);
+            const y = (yOriginal * scaleY) + (imgRect.top - containerRect.top);
+
+            marker.style.left = `${x}px`;
+            marker.style.top = `${y}px`;
+            marker.style.display = "block";
+        }
+
+        // ===== 4. FALLBACK TO MANUAL INPUT =====
+        function fallbackToManual() {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = "GPS failed. Enter coordinates manually.";
+
+            const lat = parseFloat(prompt("Enter latitude (e.g., 13.85):"));
+            const lon = parseFloat(prompt("Enter longitude (e.g., 100.85):"));
+
+            if (!isNaN(lat) && !isNaN(lon)) {
+                currentPosition = { latitude: lat, longitude: lon };
+                updateMarkerPosition();
+            } else {
+                statusEl.textContent = "Using default Bangkok location.";
+                currentPosition = { latitude: 13.85, longitude: 100.85 };
+                updateMarkerPosition();
+            }
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (currentPosition) updateMarkerPosition();
+        });
+    </script>
+</body>
+</html>
