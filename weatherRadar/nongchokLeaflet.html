@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Radar Location Marker</title>
+    <title>Bangkok Radar Location Marker</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
@@ -14,27 +14,27 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Radar image parameters
+        // Radar image parameters for Bangkok
         const radarImage = {
             url: 'https://weather.bangkok.go.th/Images/Radar/radarh.jpg',
-            width: 1920,
-            height: 1600,
-            centerX: 1047,
-            centerY: 793,
-            scale: 366.667, // pixels per degree
-            stationLat: 13.7563, // Bangkok coordinates
-            stationLon: 100.5018
+            width: 1920,      // Image width in pixels
+            height: 1600,     // Image height in pixels
+            centerX: 1047,    // Station X position in image
+            centerY: 793,     // Station Y position in image
+            scale: 366.667,   // Pixels per degree (vertical scale)
+            stationLat: 13.834804,  // Radar station latitude (N)
+            stationLon: 100.846332  // Radar station longitude (E)
         };
 
-        // Create map with custom CRS (Coordinate Reference System)
+        // Initialize map with simple coordinate system
         const map = L.map('map', {
-            crs: L.CRS.Simple, // Simple flat coordinate system
+            crs: L.CRS.Simple,  // Use simple coordinate system for flat image
             minZoom: -1,
             maxZoom: 5,
             attributionControl: false
         });
 
-        // Calculate image bounds (since Leaflet uses bottom-left as [0,0])
+        // Calculate image bounds (Leaflet uses bottom-left as [0,0])
         const southWest = map.unproject([0, radarImage.height], map.getMaxZoom()-1);
         const northEast = map.unproject([radarImage.width, 0], map.getMaxZoom()-1);
         const bounds = new L.LatLngBounds(southWest, northEast);
@@ -43,22 +43,29 @@
         L.imageOverlay(radarImage.url, bounds).addTo(map);
         map.fitBounds(bounds);
 
-        // Convert lat/lon to radar image coordinates
+        // Convert geographic coordinates to radar image coordinates
         function latLonToPoint(lat, lon) {
+            // Calculate differences from station location
             const deltaLat = lat - radarImage.stationLat;
             const deltaLon = lon - radarImage.stationLon;
             
+            // Calculate horizontal scale (adjusted for latitude)
+            const latRad = radarImage.stationLat * Math.PI / 180;
+            const horizontalScale = radarImage.scale * Math.cos(latRad);
+            
             // Calculate x,y position (accounting for y-axis inversion)
-            const x = radarImage.centerX + (deltaLon * radarImage.scale * Math.cos(radarImage.stationLat * Math.PI/180));
+            const x = radarImage.centerX + (deltaLon * horizontalScale);
             const y = radarImage.centerY - (deltaLat * radarImage.scale);
             
+            // Convert to Leaflet coordinates
             return map.unproject([x, y], map.getMaxZoom()-1);
         }
 
-        // Get user location and place marker
+        // Handle successful location detection
         function onLocationFound(e) {
             const userPoint = latLonToPoint(e.latitude, e.longitude);
             
+            // Add marker at user's location
             L.marker(userPoint, {
                 title: "Your Location",
                 alt: "Your current location on radar",
@@ -68,19 +75,21 @@
               .openPopup();
         }
 
+        // Handle location errors
         function onLocationError(e) {
             console.error("Geolocation error:", e.message);
+            alert("Could not get your location: " + e.message);
         }
 
-        // Set up location detection
+        // Set up location event handlers
         map.on('locationfound', onLocationFound);
         map.on('locationerror', onLocationError);
 
-        // Try to locate user when page loads
+        // Try to locate user immediately when page loads
         map.locate({
-            setView: false,
-            enableHighAccuracy: true,
-            timeout: 10000
+            setView: false,          // Don't change map view
+            enableHighAccuracy: true, // Use GPS if available
+            timeout: 10000           // Timeout after 10 seconds
         });
     </script>
 </body>
