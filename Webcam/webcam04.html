@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webcam Analyzer with ROI Selection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 20px;
+            justify-content: center;
+        }
+        .view {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+        video, canvas {
+            width: 320px;
+            height: 240px;
+            background-color: #666;
+            border-radius: 8px;
+        }
+        #pixelDisplay, #thresholdDisplay, #roiDisplay {
+            width: 320px;
+            height: 240px;
+            background-color: #000;
+            border-radius: 8px;
+            image-rendering: pixelated;
+        }
+        #thresholdContainer {
+            position: relative;
+        }
+        #selectionBox {
+            position: absolute;
+            border: 2px dashed yellow;
+            pointer-events: none;
+            box-sizing: border-box;
+        }
+        #selectionHandle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: red;
+            right: -5px;
+            bottom: -5px;
+            cursor: nwse-resize;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .info {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+            max-width: 600px;
+        }
+        h3 {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Webcam Analyzer with ROI Selection</h1>
+    <div class="container">
+        <div class="view">
+            <h3>Original</h3>
+            <video id="videoElement" autoplay></video>
+        </div>
+        <div class="view">
+            <h3>Grayscale</h3>
+            <canvas id="grayscaleCanvas"></canvas>
+        </div>
+        <div class="view">
+            <h3>Pixel Values</h3>
+            <canvas id="pixelDisplay"></canvas>
+        </div>
+        <div class="view" id="thresholdContainer">
+            <h3>Threshold: <span id="thresholdValue">128</span></h3>
+            <canvas id="thresholdDisplay"></canvas>
+            <div id="selectionBox" style="display: none;">
+                <div id="selectionHandle"></div>
+            </div>
+        </div>
+        <div class="view">
+            <h3>Selected Area</h3>
+            <canvas id="roiDisplay"></canvas>
+        </div>
+    </div>
+    <div class="controls">
+        <div class="slider-container">
+            <label for="thresholdSlider">Threshold:</label>
+            <input type="range" id="thresholdSlider" min="0" max="255" value="128">
+            <span id="thresholdValueDisplay">128</span>
+        </div>
+        <div>
+            <button id="startButton">Start Webcam</button>
+            <button id="stopButton" disabled>Stop Webcam</button>
+        </div>
+    </div>
+    <div class="info">
+        <p>Drag the yellow square to select a region of interest (ROI). Drag the red handle to resize. 
+        The selected area data is shown in the fifth view.</p>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('videoElement');
+        const grayscaleCanvas = document.getElementById('grayscaleCanvas');
+        const grayscaleCtx = grayscaleCanvas.getContext('2d');
+        const pixelDisplay = document.getElementById('pixelDisplay');
+        const pixelDisplayCtx = pixelDisplay.getContext('2d');
+        const thresholdDisplay = document.getElementById('thresholdDisplay');
+        const thresholdCtx = thresholdDisplay.getContext('2d');
+        const roiDisplay = document.getElementById('roiDisplay');
+        const roiCtx = roiDisplay.getContext('2d');
+        const thresholdSlider = document.getElementById('thresholdSlider');
+        const thresholdValueDisplay = document.getElementById('thresholdValueDisplay');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const selectionBox = document.getElementById('selectionBox');
+        const selectionHandle = document.getElementById('selectionHandle');
+        const thresholdContainer = document.getElementById('thresholdContainer');
+        
+        let stream = null;
+        let animationId = null;
+        let grayscaleArray = null;
+        let currentThreshold = 128;
+        let isDragging = false;
+        let isResizing = false;
+        let startX, startY;
+        let boxX = 50, boxY = 50, boxSize = 100;
+        const minBoxSize = 50;
+        let roiArray = null;
+
+        // Update threshold display when slider changes
+        thresholdSlider.addEventListener('input', (e) => {
+            currentThreshold = parseInt(e.target.value);
+            thresholdValueDisplay.textContent = currentThreshold;
+        });
+
+        // Selection box interaction
+        selectionBox.addEventListener('mousedown', (e) => {
+            if (e.target === selectionHandle) {
+                isResizing = true;
+            } else {
+                isDragging = true;
+            }
+            startX = e.clientX;
+            startY = e.clientY;
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging && !isResizing) return;
+            
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            
+            if (isDragging) {
+                // Move the box
+                boxX += dx;
+                boxY += dy;
+                
+                // Constrain to canvas bounds
+                boxX = Math.max(0, Math.min(thresholdDisplay.width - boxSize, boxX));
+                boxY = Math.max(0, Math.min(thresholdDisplay.height - boxSize, boxY));
+            } else if (isResizing) {
+                // Resize the box (maintain square aspect ratio)
+                const newSize = Math.max(minBoxSize, boxSize + dx);
+                boxSize = Math.min(newSize, 
+                    Math.min(thresholdDisplay.width - boxX, thresholdDisplay.height - boxY));
+            }
+            
+            updateSelectionBox();
+            startX = e.clientX;
+            startY = e.clientY;
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            isResizing = false;
+        });
+
+        function updateSelectionBox() {
+            selectionBox.style.left = `${boxX}px`;
+            selectionBox.style.top = `${boxY}px`;
+            selectionBox.style.width = `${boxSize}px`;
+            selectionBox.style.height = `${boxSize}px`;
+            selectionBox.style.display = 'block';
+        }
+
+        // Initialize selection box
+        thresholdDisplay.addEventListener('click', (e) => {
+            const rect = thresholdDisplay.getBoundingClientRect();
+            const scaleX = thresholdDisplay.width / rect.width;
+            const scaleY = thresholdDisplay.height / rect.height;
+            
+            boxX = (e.clientX - rect.left) * scaleX - boxSize/2;
+            boxY = (e.clientY - rect.top) * scaleY - boxSize/2;
+            
+            // Constrain to canvas bounds
+            boxX = Math.max(0, Math.min(thresholdDisplay.width - boxSize, boxX));
+            boxY = Math.max(0, Math.min(thresholdDisplay.height - boxSize, boxY));
+            
+            updateSelectionBox();
+        });
+
+        // Function to start the webcam
+        async function startWebcam() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                videoElement.srcObject = stream;
+                startButton.disabled = true;
+                stopButton.disabled = false;
+                
+                // Set canvas dimensions to match video
+                videoElement.addEventListener('loadedmetadata', () => {
+                    grayscaleCanvas.width = videoElement.videoWidth;
+                    grayscaleCanvas.height = videoElement.videoHeight;
+                    pixelDisplay.width = videoElement.videoWidth;
+                    pixelDisplay.height = videoElement.videoHeight;
+                    thresholdDisplay.width = videoElement.videoWidth;
+                    thresholdDisplay.height = videoElement.videoHeight;
+                    roiDisplay.width = minBoxSize;
+                    roiDisplay.height = minBoxSize;
+                    
+                    // Initialize array to store grayscale values
+                    grayscaleArray = new Uint8Array(videoElement.videoWidth * videoElement.videoHeight);
+                    roiArray = new Uint8Array(minBoxSize * minBoxSize);
+                    
+                    // Initialize selection box
+                    boxSize = Math.min(100, videoElement.videoWidth, videoElement.videoHeight);
+                    boxX = (videoElement.videoWidth - boxSize) / 2;
+                    boxY = (videoElement.videoHeight - boxSize) / 2;
+                    updateSelectionBox();
+                    
+                    // Start processing frames
+                    processFrame();
+                });
+            } catch (err) {
+                console.error("Error accessing the webcam: ", err);
+                alert("Could not access the webcam. Please make sure you've granted permission.");
+            }
+        }
+
+        // Function to process each frame
+        function processFrame() {
+            if (videoElement.readyState >= videoElement.HAVE_METADATA) {
+                // Draw the current video frame to the grayscale canvas
+                grayscaleCtx.drawImage(videoElement, 0, 0, grayscaleCanvas.width, grayscaleCanvas.height);
+                
+                // Get the image data
+                const imageData = grayscaleCtx.getImageData(0, 0, grayscaleCanvas.width, grayscaleCanvas.height);
+                const data = imageData.data;
+                
+                // Convert to grayscale and store in array
+                for (let i = 0; i < data.length; i += 4) {
+                    // Calculate grayscale value (using luminance formula)
+                    const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                    // Store in our array (convert to 8-bit integer)
+                    grayscaleArray[i/4] = Math.round(gray);
+                    // Set all RGB channels to the grayscale value
+                    data[i] = data[i + 1] = data[i + 2] = gray;
+                }
+                
+                // Put the grayscale image back to the canvas
+                grayscaleCtx.putImageData(imageData, 0, 0);
+                
+                // Visualize the pixel values array
+                visualizePixelArray();
+                
+                // Apply threshold and visualize
+                applyThreshold();
+                
+                // Extract and display ROI
+                extractROI();
+            }
+            
+            // Continue processing frames
+            animationId = requestAnimationFrame(processFrame);
+        }
+
+        // Function to visualize the pixel values array
+        function visualizePixelArray() {
+            // Create a new ImageData object
+            const displayData = new ImageData(pixelDisplay.width, pixelDisplay.height);
+            
+            // Fill the ImageData with the grayscale values
+            for (let i = 0; i < grayscaleArray.length; i++) {
+                const val = grayscaleArray[i];
+                displayData.data[i * 4] = val;     // R
+                displayData.data[i * 4 + 1] = val;  // G
+                displayData.data[i * 4 + 2] = val;   // B
+                displayData.data[i * 4 + 3] = 255;  // Alpha (fully opaque)
+            }
+            
+            // Put the visualization on the display canvas
+            pixelDisplayCtx.putImageData(displayData, 0, 0);
+        }
+
+        // Function to apply threshold and visualize
+        function applyThreshold() {
+            // Create a new ImageData object for threshold display
+            const thresholdData = new ImageData(thresholdDisplay.width, thresholdDisplay.height);
+            
+            // Apply threshold to each pixel
+            for (let i = 0; i < grayscaleArray.length; i++) {
+                const val = grayscaleArray[i] > currentThreshold ? 255 : 0;
+                thresholdData.data[i * 4] = val;     // R
+                thresholdData.data[i * 4 + 1] = val;  // G
+                thresholdData.data[i * 4 + 2] = val;   // B
+                thresholdData.data[i * 4 + 3] = 255;  // Alpha (fully opaque)
+            }
+            
+            // Put the threshold visualization on the canvas
+            thresholdCtx.putImageData(thresholdData, 0, 0);
+        }
+
+        // Function to extract and display ROI
+        function extractROI() {
+            if (!grayscaleArray || !selectionBox.style.display || selectionBox.style.display === 'none') return;
+            
+            // Get the thresholded image data
+            const thresholdData = thresholdCtx.getImageData(0, 0, thresholdDisplay.width, thresholdDisplay.height).data;
+            
+            // Calculate the actual ROI size (may be smaller at edges)
+            const roiWidth = Math.min(boxSize, thresholdDisplay.width - boxX);
+            const roiHeight = Math.min(boxSize, thresholdDisplay.height - boxY);
+            
+            // Resize ROI display if needed
+            if (roiDisplay.width !== roiWidth || roiDisplay.height !== roiHeight) {
+                roiDisplay.width = roiWidth;
+                roiDisplay.height = roiHeight;
+                roiArray = new Uint8Array(roiWidth * roiHeight);
+            }
+            
+            // Create ROI image data
+            const roiImageData = new ImageData(roiWidth, roiHeight);
+            
+            // Extract ROI data
+            for (let y = 0; y < roiHeight; y++) {
+                for (let x = 0; x < roiWidth; x++) {
+                    const srcIdx = ((boxY + y) * thresholdDisplay.width + (boxX + x)) * 4;
+                    const dstIdx = y * roiWidth + x;
+                    
+                    // Get thresholded value (0 or 255)
+                    const val = thresholdData[srcIdx];
+                    roiArray[dstIdx] = val;
+                    
+                    // Set ROI display pixels
+                    roiImageData.data[dstIdx * 4] = val;
+                    roiImageData.data[dstIdx * 4 + 1] = val;
+                    roiImageData.data[dstIdx * 4 + 2] = val;
+                    roiImageData.data[dstIdx * 4 + 3] = 255;
+                }
+            }
+            
+            // Display ROI
+            roiCtx.putImageData(roiImageData, 0, 0);
+        }
+
+        // Function to stop the webcam
+        function stopWebcam() {
+            if (stream) {
+                cancelAnimationFrame(animationId);
+                const tracks = stream.getTracks();
+                tracks.forEach(track => track.stop());
+                videoElement.srcObject = null;
+                startButton.disabled = false;
+                stopButton.disabled = true;
+                
+                // Clear canvases
+                grayscaleCtx.clearRect(0, 0, grayscaleCanvas.width, grayscaleCanvas.height);
+                pixelDisplayCtx.clearRect(0, 0, pixelDisplay.width, pixelDisplay.height);
+                thresholdCtx.clearRect(0, 0, thresholdDisplay.width, thresholdDisplay.height);
+                roiCtx.clearRect(0, 0, roiDisplay.width, roiDisplay.height);
+                
+                // Hide selection box
+                selectionBox.style.display = 'none';
+            }
+        }
+
+        // Event listeners for buttons
+        startButton.addEventListener('click', startWebcam);
+        stopButton.addEventListener('click', stopWebcam);
+    </script>
+</body>
+</html>
