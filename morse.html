@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Morse Code Learning Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .controls {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .character-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .character-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .character-input {
+            width: 30px;
+            text-align: center;
+            margin-left: 10px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .slider-container {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        .current-character {
+            font-size: 48px;
+            text-align: center;
+            margin: 20px 0;
+            min-height: 60px;
+        }
+        .status {
+            text-align: center;
+            font-style: italic;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        .output-box {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        #characterOutput {
+            width: 100%;
+            height: 100px;
+            margin-bottom: 10px;
+            padding: 8px;
+            font-family: monospace;
+            font-size: 18px;
+        }
+        .button-group {
+            margin-top: 10px;
+        }
+        .sequence-info {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .weight-label {
+            font-size: 12px;
+            color: #666;
+            display: block;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Morse Code Learning Tool</h1>
+    
+    <div class="controls">
+        <div class="slider-container">
+            <label for="speed">Speed (WPM): <span id="speedValue">15</span></label>
+            <input type="range" id="speed" min="5" max="30" value="15">
+        </div>
+        
+        <div class="slider-container">
+            <label for="frequency">Tone Frequency (Hz): <span id="frequencyValue">600</span></label>
+            <input type="range" id="frequency" min="300" max="1000" value="600">
+        </div>
+        
+        <div class="slider-container">
+            <label for="charPause">Pause Between Characters (multiplier): <span id="charPauseValue">1.0</span></label>
+            <input type="range" id="charPause" min="0.5" max="3" step="0.1" value="1.0">
+        </div>
+        
+        <div class="slider-container">
+            <label for="charCount">Number of Characters to Send: <span id="charCountValue">10</span></label>
+            <input type="range" id="charCount" min="1" max="50" value="10">
+        </div>
+        
+        <button id="playBtn">Play Random Sequence</button>
+        <button id="stopBtn" disabled>Stop</button>
+        <div class="sequence-info" id="sequenceInfo"></div>
+    </div>
+    
+    <h2>Character Selection Weights (0-9)</h2>
+    <div class="weight-label">0 = never selected, 9 = 9x more likely than 1</div>
+    <div class="character-grid" id="characterGrid"></div>
+    
+    <div class="current-character" id="currentChar"></div>
+    <div class="status" id="status">Ready</div>
+    
+    <div class="output-box">
+        <h3>Characters Sent</h3>
+        <textarea id="characterOutput" readonly></textarea>
+        <div class="button-group">
+            <button id="clearBtn">Clear Output</button>
+        </div>
+    </div>
+    
+    <script>
+        // Morse code dictionary
+        const morseCode = {
+            'A': '.-', 'B': '-...', 'C': '-.-.', 'D': '-..', 'E': '.', 
+            'F': '..-.', 'G': '--.', 'H': '....', 'I': '..', 'J': '.---', 
+            'K': '-.-', 'L': '.-..', 'M': '--', 'N': '-.', 'O': '---', 
+            'P': '.--.', 'Q': '--.-', 'R': '.-.', 'S': '...', 'T': '-', 
+            'U': '..-', 'V': '...-', 'W': '.--', 'X': '-..-', 'Y': '-.--', 
+            'Z': '--..',
+            '0': '-----', '1': '.----', '2': '..---', '3': '...--', 
+            '4': '....-', '5': '.....', '6': '-....', '7': '--...', 
+            '8': '---..', '9': '----.'
+        };
+        
+        // Audio context setup
+        let audioContext;
+        let oscillator;
+        let gainNode;
+        let isPlaying = false;
+        let currentSequence = [];
+        let currentIndex = 0;
+        let dotDuration = 0;
+        
+        // DOM elements
+        const playBtn = document.getElementById('playBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const speedSlider = document.getElementById('speed');
+        const speedValue = document.getElementById('speedValue');
+        const frequencySlider = document.getElementById('frequency');
+        const frequencyValue = document.getElementById('frequencyValue');
+        const charPauseSlider = document.getElementById('charPause');
+        const charPauseValue = document.getElementById('charPauseValue');
+        const charCountSlider = document.getElementById('charCount');
+        const charCountValue = document.getElementById('charCountValue');
+        const characterGrid = document.getElementById('characterGrid');
+        const currentCharDisplay = document.getElementById('currentChar');
+        const statusDisplay = document.getElementById('status');
+        const characterOutput = document.getElementById('characterOutput');
+        const clearBtn = document.getElementById('clearBtn');
+        const sequenceInfo = document.getElementById('sequenceInfo');
+        
+        // Initialize character inputs
+        function initCharacterGrid() {
+            // Add letters A-Z
+            for (let i = 65; i <= 90; i++) {
+                const char = String.fromCharCode(i);
+                addCharacterInput(char);
+            }
+            
+            // Add numbers 0-9
+            for (let i = 0; i <= 9; i++) {
+                addCharacterInput(i.toString());
+            }
+        }
+        
+        function addCharacterInput(char) {
+            const item = document.createElement('div');
+            item.className = 'character-item';
+            
+            const label = document.createElement('label');
+            label.textContent = `${char} (${morseCode[char]})`;
+            
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.className = 'character-input';
+            input.id = `weight-${char}`;
+            input.value = '0';
+            input.min = '0';
+            input.max = '9';
+            input.step = '1';
+            
+            item.appendChild(label);
+            item.appendChild(input);
+            characterGrid.appendChild(item);
+        }
+        
+        // Get weighted characters
+        function getWeightedCharacters() {
+            const weightedChars = [];
+            for (const char in morseCode) {
+                const input = document.getElementById(`weight-${char}`);
+                const weight = parseInt(input.value) || 0;
+                if (weight > 0) {
+                    // Add the character to the array 'weight' times
+                    for (let i = 0; i < weight; i++) {
+                        weightedChars.push(char);
+                    }
+                }
+            }
+            return weightedChars;
+        }
+        
+        // Calculate durations based on WPM (Words Per Minute)
+        function calculateDurations(wpm) {
+            const timeUnit = 1.2 / wpm;
+            const pauseMultiplier = parseFloat(charPauseSlider.value);
+            
+            return {
+                dot: timeUnit,
+                dash: 3 * timeUnit,
+                intraChar: timeUnit, // between elements of a character
+                interChar: 3 * timeUnit * pauseMultiplier, // between characters
+                interWord: 7 * timeUnit // between words (not used here)
+            };
+        }
+        
+        // Play a tone for a specified duration
+        function playTone(duration) {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                gainNode = audioContext.createGain();
+                gainNode.gain.value = 0;
+                gainNode.connect(audioContext.destination);
+            }
+            
+            oscillator = audioContext.createOscillator();
+            oscillator.type = 'sine';
+            oscillator.frequency.value = parseInt(frequencySlider.value);
+            oscillator.connect(gainNode);
+            oscillator.start();
+            
+            // Fade in quickly to avoid clicks
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.5, audioContext.currentTime + 0.01);
+            
+            // Stop after duration
+            setTimeout(() => {
+                // Fade out quickly to avoid clicks
+                gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.01);
+                setTimeout(() => {
+                    if (oscillator) {
+                        oscillator.stop();
+                        oscillator.disconnect();
+                        oscillator = null;
+                    }
+                }, 10);
+            }, (duration * 1000) - 10);
+        }
+        
+        // Play a morse code symbol (dot or dash)
+        function playSymbol(symbol) {
+            const durations = calculateDurations(parseInt(speedSlider.value));
+            
+            if (symbol === '.') {
+                playTone(durations.dot);
+                return durations.dot;
+            } else if (symbol === '-') {
+                playTone(durations.dash);
+                return durations.dash;
+            }
+            return 0;
+        }
+        
+        // Play a morse code character
+        function playCharacter(char) {
+            return new Promise((resolve) => {
+                const code = morseCode[char];
+                if (!code) return resolve(0);
+                
+                currentCharDisplay.textContent = char;
+                
+                let totalTime = 0;
+                let symbolsPlayed = 0;
+                
+                function playNextSymbol() {
+                    if (symbolsPlayed >= code.length) {
+                        resolve(totalTime);
+                        return;
+                    }
+                    
+                    const symbol = code[symbolsPlayed];
+                    const symbolDuration = playSymbol(symbol);
+                    totalTime += symbolDuration;
+                    
+                    symbolsPlayed++;
+                    
+                    // Add intra-character pause (except after last symbol)
+                    if (symbolsPlayed < code.length) {
+                        const durations = calculateDurations(parseInt(speedSlider.value));
+                        totalTime += durations.intraChar;
+                        setTimeout(playNextSymbol, (symbolDuration + durations.intraChar) * 1000);
+                    } else {
+                        setTimeout(() => resolve(totalTime), symbolDuration * 1000);
+                    }
+                }
+                
+                playNextSymbol();
+            });
+        }
+        
+        // Play the current sequence
+        async function playSequence() {
+            if (currentIndex >= currentSequence.length) {
+                stopPlayback();
+                return;
+            }
+            
+            if (!isPlaying) return;
+            
+            const char = currentSequence[currentIndex];
+            statusDisplay.textContent = `Playing ${char} (${morseCode[char]})...`;
+            
+            // Add the character to the output box before playing it
+            characterOutput.value += char;
+            // Add space unless it's the last character
+            if (currentIndex < currentSequence.length - 1) {
+                characterOutput.value += ' ';
+            }
+            // Scroll to bottom
+            characterOutput.scrollTop = characterOutput.scrollHeight;
+            
+            const charDuration = await playCharacter(char);
+            currentIndex++;
+            
+            // Update sequence info
+            sequenceInfo.textContent = `Playing ${currentIndex} of ${currentSequence.length}`;
+            
+            // Add inter-character pause (except after last character)
+            if (currentIndex < currentSequence.length) {
+                const durations = calculateDurations(parseInt(speedSlider.value));
+                await new Promise(resolve => setTimeout(resolve, durations.interChar * 1000));
+            }
+            
+            playSequence();
+        }
+        
+        // Start playback
+        function startPlayback() {
+            const weightedChars = getWeightedCharacters();
+            if (weightedChars.length === 0) {
+                alert('Please set weights for at least one character (1-9).');
+                return;
+            }
+            
+            // Generate random sequence with the specified number of characters
+            const charCount = parseInt(charCountSlider.value);
+            currentSequence = [];
+            for (let i = 0; i < charCount; i++) {
+                const randomIndex = Math.floor(Math.random() * weightedChars.length);
+                currentSequence.push(weightedChars[randomIndex]);
+            }
+            
+            currentIndex = 0;
+            isPlaying = true;
+            playBtn.disabled = true;
+            stopBtn.disabled = false;
+            currentCharDisplay.textContent = '';
+            statusDisplay.textContent = 'Playing...';
+            sequenceInfo.textContent = `Playing 0 of ${currentSequence.length}`;
+            
+            playSequence();
+        }
+        
+        // Stop playback
+        function stopPlayback() {
+            isPlaying = false;
+            currentCharDisplay.textContent = '';
+            statusDisplay.textContent = 'Stopped';
+            playBtn.disabled = false;
+            stopBtn.disabled = true;
+            sequenceInfo.textContent = '';
+            
+            if (oscillator) {
+                oscillator.stop();
+                oscillator.disconnect();
+                oscillator = null;
+            }
+        }
+        
+        // Clear the output box
+        function clearOutput() {
+            characterOutput.value = '';
+        }
+        
+        // Event listeners
+        playBtn.addEventListener('click', startPlayback);
+        stopBtn.addEventListener('click', stopPlayback);
+        clearBtn.addEventListener('click', clearOutput);
+        
+        speedSlider.addEventListener('input', () => {
+            speedValue.textContent = speedSlider.value;
+        });
+        
+        frequencySlider.addEventListener('input', () => {
+            frequencyValue.textContent = frequencySlider.value;
+        });
+        
+        charPauseSlider.addEventListener('input', () => {
+            charPauseValue.textContent = charPauseSlider.value;
+        });
+        
+        charCountSlider.addEventListener('input', () => {
+            charCountValue.textContent = charCountSlider.value;
+        });
+        
+        // Initialize
+        initCharacterGrid();
+    </script>
+</body>
+</html>
